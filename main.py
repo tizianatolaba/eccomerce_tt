@@ -217,6 +217,14 @@ def register_user(
     Registrar un nuevo usuario.
     """
 
+    new_user = models.User(
+    name=user_data.name,
+    email=user_data.email,
+    hashed_password=hashed_pwd,
+    data_consent=user_data.data_consent,
+    consent_date=datetime.datetime.now(datetime.timezone.utc),  # <-- agregar
+)
+
     if not user_data.data_consent:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -257,6 +265,9 @@ def register_user(
 @app.post(
     "/api/auth/login",
     response_model=schemas.Token
+
+
+
 )
 def login_json(
     login_data: schemas.UserLogin,

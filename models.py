@@ -57,3 +57,18 @@ class OrderItem(Base):
 
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, default="user")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    data_consent = Column(Boolean, default=False, nullable=False)
+    consent_date = Column(DateTime, nullable=True)   # <-- nueva columna
+
+    orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")

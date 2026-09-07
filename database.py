@@ -1,7 +1,7 @@
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 
 # Get DATABASE_URL from environment, default to local SQLite for easy development
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ecommerce.db")
