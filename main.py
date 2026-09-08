@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from services import products as products_service
 
 import models
 import schemas
@@ -217,14 +218,6 @@ def register_user(
     Registrar un nuevo usuario.
     """
 
-    new_user = models.User(
-    name=user_data.name,
-    email=user_data.email,
-    hashed_password=hashed_pwd,
-    data_consent=user_data.data_consent,
-    consent_date=datetime.datetime.now(datetime.timezone.utc),  # <-- agregar
-)
-
     if not user_data.data_consent:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -252,7 +245,8 @@ def register_user(
         name=user_data.name,
         email=user_data.email,
         hashed_password=hashed_pwd,
-        data_consent=user_data.data_consent
+        data_consent=user_data.data_consent,
+        consent_date=datetime.datetime.now(datetime.timezone.utc),
     )
 
     db.add(new_user)
@@ -265,9 +259,6 @@ def register_user(
 @app.post(
     "/api/auth/login",
     response_model=schemas.Token
-
-
-
 )
 def login_json(
     login_data: schemas.UserLogin,
@@ -466,24 +457,25 @@ def update_user_data(
     tags=["Productos"]
 )
 def get_products(
+    skip: int = 0,
+    limit: int = 10,
+    name: Optional[str] = None,
+    max_price: Optional[float] = None,
     category: Optional[str] = None,
     db: Session = Depends(database.get_db)
 ):
     """
-    Obtener todos los productos.
+    Obtener productos, con paginación y filtros opcionales.
 
-    Permite filtrar por categoría utilizando:
+    /api/products?skip=0&limit=10
+    /api/products?name=luffy
+    /api/products?max_price=500
     /api/products?category=Anime
     """
 
-    query = db.query(models.Product)
-
-    if category:
-        query = query.filter(
-            models.Product.category.like(f"%{category}%")
-        )
-
-    return query.all()
+    return products_service.listar_productos(
+        db, skip=skip, limit=limit, name=name, max_price=max_price, category=category
+    )
 
 
 # Alias para /productos
@@ -493,21 +485,20 @@ def get_products(
     tags=["Productos"]
 )
 def obtener_productos(
+    skip: int = 0,
+    limit: int = 10,
+    name: Optional[str] = None,
+    max_price: Optional[float] = None,
     category: Optional[str] = None,
     db: Session = Depends(database.get_db)
 ):
     """
-    Obtener todos los productos.
+    Obtener todos los productos (alias en español).
     """
 
-    query = db.query(models.Product)
-
-    if category:
-        query = query.filter(
-            models.Product.category.like(f"%{category}%")
-        )
-
-    return query.all()
+    return products_service.listar_productos(
+        db, skip=skip, limit=limit, name=name, max_price=max_price, category=category
+    )
 
 
 @app.get(
@@ -536,6 +527,81 @@ def get_product(
         )
 
     return product
+
+
+@app.post(
+    "/api/products",
+    response_model=schemas.ProductResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Productos"]
+)
+def create_product(
+    producto: schemas.ProductCreate,
+    admin: models.User = Depends(auth.require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Crear un producto. Requiere rol admin.
+    """
+    return products_service.crear_producto(db, producto)
+
+
+@app.put(
+    "/api/products/{product_id}",
+    response_model=schemas.ProductResponse,
+    tags=["Productos"]
+)
+def update_product(
+    product_id: int,
+    producto: schemas.ProductCreate,
+    admin: models.User = Depends(auth.require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Editar un producto existente. Requiere rol admin.
+    """
+    db_product = (
+        db.query(models.Product)
+        .filter(models.Product.id == product_id)
+        .first()
+    )
+    if not db_product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Producto no encontrado."
+        )
+    for key, value in producto.dict().items():
+        setattr(db_product, key, value)
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+
+
+@app.delete(
+    "/api/products/{product_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Productos"]
+)
+def delete_product(
+    product_id: int,
+    admin: models.User = Depends(auth.require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Borrar un producto. Requiere rol admin.
+    """
+    db_product = (
+        db.query(models.Product)
+        .filter(models.Product.id == product_id)
+        .first()
+    )
+    if not db_product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Producto no encontrado."
+        )
+    db.delete(db_product)
+    db.commit()
 
 
 # ============================================================
