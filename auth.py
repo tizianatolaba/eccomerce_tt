@@ -9,6 +9,19 @@ from sqlalchemy.orm import Session
 import models
 import database
 
+import bcrypt
+
+# Fix passlib compatibility with bcrypt >= 4.0.0
+if not hasattr(bcrypt, "__about__"):
+    bcrypt.__about__ = type("about", (), {"__version__": getattr(bcrypt, "__version__", "4.0.0")})
+
+_orig_hashpw = bcrypt.hashpw
+def _safe_hashpw(password, salt):
+    if len(password) > 72:
+        password = password[:72]
+    return _orig_hashpw(password, salt)
+bcrypt.hashpw = _safe_hashpw
+
 # Password hashing configuration
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
