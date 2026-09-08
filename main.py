@@ -5,6 +5,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from services import products as products_service
@@ -858,13 +859,7 @@ def get_legal_info():
     tags=["General"]
 )
 def root():
-    return {
-        "mensaje": "Bienvenido a la API de E-Commerce Juvenil de Stickers",
-        "descripcion": (
-            "API de e-commerce de stickers sujeta a la Ley 24.240 "
-            "de Defensa del Consumidor, Res. 424/2020 y Ley 25.326."
-        )
-    }
+    return RedirectResponse(url="/static/index.html")
 
 
 # ============================================================
