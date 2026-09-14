@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Float, Numeric, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -34,6 +34,21 @@ class User(Base):
         nullable=True
     )
 
+    # --- Clase 9: baja de cuenta ---
+    # Un usuario dado de baja no se borra: se anonimiza y se marca
+    # como inactivo. get_current_user() rechaza tokens de usuarios
+    # con activo=False (ver auth.py).
+    activo = Column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    fecha_baja = Column(
+        DateTime,
+        nullable=True
+    )
+
     orders = relationship(
         "Order",
         back_populates="user",
@@ -59,6 +74,11 @@ class Product(Base):
 
 
 class Order(Base):
+    """
+    Es el "Pedido" de la consigna. Se mantiene el nombre Order/status
+    ya usado en el resto del proyecto (y en el frontend) para no romper
+    nada existente: status cumple el rol de "estado".
+    """
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -68,12 +88,13 @@ class Order(Base):
         nullable=False
     )
 
-    total_price = Column(Float, nullable=False)
+    # Numeric, no Float: nada de errores de redondeo binario con plata.
+    total_price = Column(Numeric(12, 2), nullable=False)
 
-    # Pending, Paid, Cancelled/Arrepentido
+    # pendiente / Pending / Paid / cancelado, según el flujo del proyecto
     status = Column(
         String,
-        default="Pending",
+        default="pendiente",
         nullable=False
     )
 
@@ -101,6 +122,7 @@ class Order(Base):
 
 
 class OrderItem(Base):
+    """Es el "ItemPedido" de la consigna."""
     __tablename__ = "order_items"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -123,8 +145,10 @@ class OrderItem(Base):
         default=1
     )
 
+    # precio_unitario de la consigna: el precio del producto
+    # EN EL MOMENTO de la compra, no el precio actual del producto.
     price_at_purchase = Column(
-        Float,
+        Numeric(12, 2),
         nullable=False
     )
 
@@ -137,3 +161,37 @@ class OrderItem(Base):
         "Product",
         back_populates="order_items"
     )
+
+
+class SolicitudRevocacion(Base):
+    """
+    Registro del botón de arrepentimiento (Disposición 954/2025 y
+    3/2026, art. 34 Ley 24.240). Cada revocación exitosa genera un
+    código único que se le entrega al consumidor.
+    """
+    __tablename__ = "solicitudes_revocacion"
+
+    id = Column(Integer, primary_key=True, index=True)
+    codigo = Column(String, unique=True, index=True, nullable=False)
+
+    pedido_id = Column(
+        Integer,
+        ForeignKey("orders.id"),
+        nullable=False
+    )
+
+    usuario_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False
+    )
+
+    creada_en = Column(
+        DateTime,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    pedido = relationship("Order")
+    usuario = relationship("User")
+
+    

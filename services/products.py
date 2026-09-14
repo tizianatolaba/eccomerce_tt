@@ -31,3 +31,4 @@ def listar_productos(
         query = query.filter(models.Product.category.like(f"%{category}%"))
 
     return query.offset(skip).limit(limit).all()
+    

@@ -56,7 +56,7 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     if not token:
         raise credentials_exception
 
@@ -67,11 +67,17 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-        
+
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise credentials_exception
-        
+
+    # Clase 9, Parte 4: un usuario dado de baja no puede seguir
+    # entrando con un token que ya tenía. No importa que el JWT
+    # todavía no haya expirado: si activo=False, se corta acá.
+    if not user.activo:
+        raise credentials_exception
+
     return user
 
 

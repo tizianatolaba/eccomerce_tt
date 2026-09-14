@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
+from decimal import Decimal
 import datetime
 
 # --- Token Schemas ---
@@ -65,6 +66,9 @@ class ProductCreate(BaseModel):
 
 # --- Order Item Schemas ---
 class OrderItemCreate(BaseModel):
+    # Esto es el "ItemIn" de la consigna: SOLO producto_id y cantidad.
+    # A propósito NO tiene precio ni price_at_purchase: eso lo decide
+    # siempre el servidor en pedido_service.crear_pedido().
     product_id: int
     quantity: int = Field(..., gt=0, description="Quantity must be greater than 0")
 
@@ -72,24 +76,34 @@ class OrderItemResponse(BaseModel):
     id: int
     product_id: int
     quantity: int
-    price_at_purchase: float
+    price_at_purchase: Decimal
     product: ProductResponse
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 # --- Order Schemas ---
 class OrderCreate(BaseModel):
-    items: List[OrderItemCreate]
+    # Esto es el "PedidoCreate" de la consigna: SOLO una lista de items.
+    # Sin precio, sin total, sin usuario_id. El usuario sale del token
+    # (Depends(get_current_user)), nunca del cuerpo del pedido.
+    items: List[OrderItemCreate] = Field(..., min_length=1)
 
 class OrderResponse(BaseModel):
     id: int
     user_id: int
-    total_price: float
+    total_price: Decimal
     status: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
     items: List[OrderItemResponse]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
+
+
+# --- Revocación (botón de arrepentimiento, Clase 9) ---
+class RevocacionResponse(BaseModel):
+    codigo: str
+    pedido_id: int
+    creada_en: datetime.datetime
+
+    model_config = {"from_attributes": True}

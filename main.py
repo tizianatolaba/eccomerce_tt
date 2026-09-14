@@ -9,6 +9,9 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from services import products as products_service
+from services import pedido_service
+from services import revocacion_service
+from services import usuario_service
 
 import models
 import schemas
@@ -285,6 +288,13 @@ def login_json(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if not user.activo:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Esta cuenta fue dada de baja.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     access_token = auth.create_access_token(
         data={"sub": user.email}
     )
@@ -323,6 +333,13 @@ def login_form(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if not user.activo:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Esta cuenta fue dada de baja.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     access_token = auth.create_access_token(
         data={"sub": user.email}
     )
@@ -356,30 +373,21 @@ def delete_user_data(
     db: Session = Depends(database.get_db)
 ):
     """
-    Eliminar la cuenta y los datos personales del usuario.
+    Clase 9, Parte 4: dar de baja la cuenta. NO se borra la fila
+    (los pedidos quedarían huérfanos o se perdería el historial):
+    se anonimiza nombre/email/contraseña y se marca activo=False.
+    Después de esto, el token actual deja de servir (ver auth.py).
     """
 
-    try:
-        db.delete(current_user)
-        db.commit()
+    usuario_service.dar_de_baja(db, current_user)
 
-        return {
-            "detail": (
-                "Cuenta y datos personales eliminados con éxito "
-                "en cumplimiento de la Ley 25.326."
-            )
-        }
-
-    except Exception as e:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Ocurrió un error al procesar la solicitud de eliminación: "
-                f"{str(e)}"
-            )
+    return {
+        "detail": (
+            "Cuenta dada de baja: tus datos personales fueron "
+            "anonimizados en cumplimiento de la Ley 25.326. Tus "
+            "pedidos se conservan en la base."
         )
+    }
 
 
 @app.patch(
@@ -446,6 +454,41 @@ def update_user_data(
                 f"{str(e)}"
             )
         )
+
+
+# ============================================================
+# CLASE 9 · ACCESO Y PORTABILIDAD DE DATOS
+# ============================================================
+
+@app.get(
+    "/api/users/me/datos",
+    tags=["Usuarios"]
+)
+def get_mis_datos(
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Devuelve TODO lo que la base guarda de este usuario: sus datos,
+    su consentimiento con fecha, sus pedidos y sus solicitudes de
+    revocación.
+    """
+    return usuario_service.obtener_datos_usuario(db, current_user)
+
+
+@app.get(
+    "/api/users/me/exportar",
+    tags=["Usuarios"]
+)
+def exportar_mis_datos(
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Igual que /me/datos, pero como archivo .json descargable
+    (Content-Disposition: attachment).
+    """
+    return usuario_service.exportar_datos_usuario(db, current_user)
 
 
 # ============================================================
@@ -606,7 +649,7 @@ def delete_product(
 
 
 # ============================================================
-# PEDIDOS
+# PEDIDOS  (Clase 8: checkout transaccional)
 # ============================================================
 
 @app.post(
@@ -621,88 +664,11 @@ def place_order(
     db: Session = Depends(database.get_db)
 ):
     """
-    Crear una nueva orden.
+    Checkout: la lógica transaccional (stock, 404/409, rollback,
+    precio congelado) vive en services/pedido_service.crear_pedido,
+    no acá. El endpoint solo conecta HTTP con el servicio.
     """
-
-    if not order_data.items:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La orden debe contener al menos un producto."
-        )
-
-    total_price = 0.0
-    order_items_to_create = []
-
-    try:
-
-        for item in order_data.items:
-
-            product = (
-                db.query(models.Product)
-                .filter(models.Product.id == item.product_id)
-                .first()
-            )
-
-            if not product:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=(
-                        f"El producto con ID "
-                        f"{item.product_id} no existe."
-                    )
-                )
-
-            if product.stock < item.quantity:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Stock insuficiente para {product.name}. "
-                        f"Stock disponible: {product.stock}."
-                    )
-                )
-
-            product.stock -= item.quantity
-
-            item_total = product.price * item.quantity
-            total_price += item_total
-
-            order_item = models.OrderItem(
-                product_id=product.id,
-                quantity=item.quantity,
-                price_at_purchase=product.price
-            )
-
-            order_items_to_create.append(order_item)
-
-        now = datetime.datetime.now(datetime.timezone.utc)
-
-        new_order = models.Order(
-            user_id=current_user.id,
-            total_price=total_price,
-            status="Paid",
-            created_at=now,
-            updated_at=now
-        )
-
-        new_order.items = order_items_to_create
-
-        db.add(new_order)
-        db.commit()
-        db.refresh(new_order)
-
-        return new_order
-
-    except HTTPException:
-        db.rollback()
-        raise
-
-    except Exception as e:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al procesar la orden: {str(e)}"
-        )
+    return pedido_service.crear_pedido(db, current_user, order_data)
 
 
 @app.get(
@@ -715,7 +681,9 @@ def get_user_orders(
     db: Session = Depends(database.get_db)
 ):
     """
-    Obtener las órdenes del usuario autenticado.
+    Equivalente a GET /pedidos/mios: solo los pedidos del usuario
+    del token, del más nuevo al más viejo. No compite con la ruta
+    de abajo porque no tiene segmento extra en el path.
     """
 
     return (
@@ -726,13 +694,31 @@ def get_user_orders(
     )
 
 
+@app.get(
+    "/api/orders/{order_id}",
+    response_model=schemas.OrderResponse,
+    tags=["Pedidos"]
+)
+def get_order(
+    order_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Equivalente a GET /pedidos/{pedido_id}. Un pedido ajeno
+    devuelve 404 (ver pedido_service.obtener_pedido).
+    """
+    return pedido_service.obtener_pedido(db, current_user, order_id)
+
+
 # ============================================================
-# BOTÓN DE ARREPENTIMIENTO
+# BOTÓN DE ARREPENTIMIENTO  (Clase 9, Partes 1-2)
 # ============================================================
 
 @app.post(
     "/api/orders/{order_id}/arrepentirse",
-    response_model=schemas.OrderResponse,
+    response_model=schemas.RevocacionResponse,
+    status_code=status.HTTP_201_CREATED,
     tags=["Pedidos"]
 )
 def cancel_order_arrepentimiento(
@@ -741,84 +727,12 @@ def cancel_order_arrepentimiento(
     db: Session = Depends(database.get_db)
 ):
     """
-    Cancelar una orden mediante el botón de arrepentimiento.
+    Equivalente a POST /pedidos/{pedido_id}/revocacion. Devuelve 201
+    con el código de la solicitud (Disposición 954/2025 y 3/2026,
+    art. 34 Ley 24.240). La lógica de las 4 validaciones y la
+    transacción vive en services/revocacion_service.revocar.
     """
-
-    order = (
-        db.query(models.Order)
-        .filter(
-            models.Order.id == order_id,
-            models.Order.user_id == current_user.id
-        )
-        .first()
-    )
-
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Orden no encontrada."
-        )
-
-    if order.status == "Cancelled/Arrepentido":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Esta orden ya ha sido cancelada bajo "
-                "el Botón de Arrepentimiento."
-            )
-        )
-
-    now = datetime.datetime.now(datetime.timezone.utc)
-
-    order_created_at = order.created_at
-
-    if order_created_at.tzinfo is None:
-        order_created_at = order_created_at.replace(
-            tzinfo=datetime.timezone.utc
-        )
-
-    elapsed_time = now - order_created_at
-
-    if elapsed_time.days > 10:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "El plazo legal de 10 días para ejercer "
-                "el derecho de arrepentimiento ha expirado."
-            )
-        )
-
-    try:
-
-        for item in order.items:
-
-            product = (
-                db.query(models.Product)
-                .filter(models.Product.id == item.product_id)
-                .first()
-            )
-
-            if product:
-                product.stock += item.quantity
-
-        order.status = "Cancelled/Arrepentido"
-        order.updated_at = now
-
-        db.commit()
-        db.refresh(order)
-
-        return order
-
-    except Exception as e:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Ocurrió un error al procesar el arrepentimiento: "
-                f"{str(e)}"
-            )
-        )
+    return revocacion_service.revocar(db, current_user, order_id)
 
 
 # ============================================================
