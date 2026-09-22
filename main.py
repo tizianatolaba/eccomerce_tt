@@ -368,6 +368,10 @@ def get_current_user_profile(
     "/api/auth/delete-data",
     status_code=status.HTTP_200_OK
 )
+@app.delete(
+    "/api/auth/me",
+    status_code=status.HTTP_200_OK
+)
 def delete_user_data(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db)

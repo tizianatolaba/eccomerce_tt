@@ -271,6 +271,14 @@ function addToCart(productId) {
 
     saveCart();
     renderCart();
+
+    // Animación visual del botón de carrito en el navbar
+    const badge = document.getElementById('cart-count');
+    if (badge) {
+        badge.classList.remove('pulse');
+        void badge.offsetWidth; // Force reflow
+        badge.classList.add('pulse');
+    }
 }
 
 function updateCartQuantity(productId, newQty) {
@@ -585,11 +593,40 @@ function handleLogout() {
 // PROFILE & ORDERS LOGIC
 // ============================================================
 function setupProfileActions() {
+    const btnExportData = document.getElementById('btn-export-data');
     const btnDeleteAccount = document.getElementById('btn-delete-account');
     const modalDelete = document.getElementById('modal-confirm-delete');
     const modalDeleteClose = document.getElementById('modal-delete-close');
     const btnDeleteCancel = document.getElementById('btn-delete-cancel');
     const btnDeleteConfirm = document.getElementById('btn-delete-confirm');
+
+    // Export user personal data JSON (Ley 25.326 compliance)
+    if (btnExportData) {
+        btnExportData.addEventListener('click', async () => {
+            if (!token) return;
+            try {
+                showToast('Generando descarga de tus datos...', 'info');
+                const response = await fetch(`${API_URL}/api/users/me/exportar`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) throw new Error('Error al exportar los datos');
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `mis_datos_personales.json`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                showToast('Archivo de datos descargado con éxito', 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        });
+    }
 
     if (btnDeleteAccount) btnDeleteAccount.addEventListener('click', () => modalDelete?.classList.add('open'));
     if (modalDeleteClose) modalDeleteClose.addEventListener('click', () => modalDelete?.classList.remove('open'));
@@ -598,7 +635,7 @@ function setupProfileActions() {
     if (btnDeleteConfirm) {
         btnDeleteConfirm.addEventListener('click', async () => {
             try {
-                const response = await fetch(`${API_URL}/api/auth/me`, {
+                const response = await fetch(`${API_URL}/api/auth/delete-data`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -639,8 +676,9 @@ function setupProfileActions() {
                     throw new Error(errData.detail || 'Error al procesar el arrepentimiento');
                 }
 
+                const resData = await response.json();
                 modalArrepentimiento?.classList.remove('open');
-                showToast(`Compra #${pendingArrepentimientoOrderId} cancelada por Botón de Arrepentimiento (Res. 424/2020)`, 'success');
+                showToast(`Compra #${pendingArrepentimientoOrderId} cancelada. Código de trámite: ${resData.codigo || 'OK'}`, 'success');
                 pendingArrepentimientoOrderId = null;
 
                 await loadUserOrders();
@@ -688,7 +726,10 @@ async function loadUserOrders() {
         container.innerHTML = orders.map(order => {
             const orderDate = new Date(order.created_at);
             const diffDays = (now - orderDate) / (1000 * 60 * 60 * 24);
-            const isArrepentimientoEligible = order.status !== 'Cancelled/Arrepentido' && diffDays <= 10;
+            const isCancelled = order.status === 'cancelado' || order.status === 'Cancelled/Arrepentido';
+            const isArrepentimientoEligible = !isCancelled && diffDays <= 10;
+            const displayStatus = isCancelled ? 'Arrepentido / Cancelado' : (order.status === 'Paid' ? 'Pagado' : order.status);
+            const statusClass = isCancelled ? 'status-cancelado' : `status-${order.status.toLowerCase()}`;
 
             return `
                 <div class="order-card card">
@@ -697,7 +738,7 @@ async function loadUserOrders() {
                             <h3>Orden #${order.id}</h3>
                             <span class="order-date">${orderDate.toLocaleDateString('es-AR')} ${orderDate.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
-                        <span class="order-status status-${order.status.toLowerCase().replace('/', '-')}">${order.status}</span>
+                        <span class="order-status ${statusClass}">${displayStatus}</span>
                     </div>
 
                     <div class="order-items">
@@ -736,3 +777,11 @@ function openArrepentimientoModal(orderId) {
     pendingArrepentimientoOrderId = orderId;
     document.getElementById('modal-confirm-arrepentimiento')?.classList.add('open');
 }
+
+// Exponer funciones globales en window para garantizar funcionamiento de botones inline (onclick)
+window.addToCart = addToCart;
+window.updateCartQuantity = updateCartQuantity;
+window.removeFromCart = removeFromCart;
+window.switchView = switchView;
+window.openArrepentimientoModal = openArrepentimientoModal;
+window.switchLegalTab = switchLegalTab;

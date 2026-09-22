@@ -1424,3 +1424,33 @@ body::after {
     font-size: 0.85rem;
     color: var(--text-muted);
 }
+
+/* Status Badges */
+.order-status {
+    padding: 0.35rem 0.85rem;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.order-status.status-paid {
+    background: rgba(0, 245, 212, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(0, 245, 212, 0.3);
+}
+
+.order-status.status-cancelado,
+.order-status.status-cancelled-arrepentido {
+    background: rgba(255, 0, 85, 0.15);
+    color: #ff3366;
+    border: 1px solid rgba(255, 0, 85, 0.3);
+}
+
+.order-status.status-pendiente {
+    background: rgba(255, 170, 0, 0.15);
+    color: #ffaa00;
+    border: 1px solid rgba(255, 170, 0, 0.3);
+}

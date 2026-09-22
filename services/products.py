@@ -28,7 +28,7 @@ def listar_productos(
         query = query.filter(models.Product.price <= max_price)
 
     if category:
-        query = query.filter(models.Product.category.like(f"%{category}%"))
+        query = query.filter(models.Product.category.ilike(f"%{category}%"))
 
     return query.offset(skip).limit(limit).all()
     
