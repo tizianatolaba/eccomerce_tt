@@ -107,3 +107,65 @@ export async function getLegalInfo() {
   }
   return await response.json();
 }
+
+/**
+ * Crear un pedido (Checkout)
+ */
+export async function createOrder(token, items) {
+  const response = await fetch(`${API_URL}/api/orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify({ items })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    let msg = errorData.detail || "Error al procesar el pedido.";
+    if (Array.isArray(msg)) {
+      msg = msg.map((e) => e.msg || e.detail).join(", ");
+    }
+    throw new Error(msg);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Obtener el historial de pedidos del usuario
+ */
+export async function getUserOrders(token) {
+  const response = await fetch(`${API_URL}/api/orders`, {
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error("No se pudieron obtener los pedidos.");
+  }
+
+  return await response.json();
+}
+
+/**
+ * Solicitar revocación / Botón de arrepentimiento (Ley 24.240 / Res 424/2020)
+ */
+export async function cancelOrderArrepentimiento(token, orderId) {
+  const response = await fetch(`${API_URL}/api/orders/${orderId}/arrepentirse`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Error al solicitar la revocación del pedido.");
+  }
+
+  return await response.json();
+}
+

@@ -18,7 +18,9 @@ tienda/node_modules/
 dist/
 tienda/dist/
 
-# OS / IDE
+# Scratch / Temp
+scratch/
+
 .DS_Store
 Thumbs.db
 .vscode/
